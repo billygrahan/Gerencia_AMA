@@ -5,7 +5,7 @@ using CloudinaryDotNet;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Scalar.AspNetCore;
+using Microsoft.OpenApi;
 using ApiTesourariaAMA.Models;
 using ApiTesourariaAMA.Enums;
 
@@ -52,19 +52,36 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
-// 5. Controllers e OpenAPI
+// 5. Controllers e Swagger
 builder.Services.AddControllers();
-builder.Services.AddOpenApi();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Description = "Informe o token JWT. Exemplo: Bearer eyJhbGciOiJIUzI1NiIs...",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
+    });
+
+    options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecuritySchemeReference("Bearer", document, null),
+            new List<string>()
+        }
+    });
+});
 
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
-    app.MapScalarApiReference(settings =>
-    {
-        settings.Title = "API Gerencia AMA v1";
-    }); // <--- Mapeia a interface interativa
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
 app.UseHttpsRedirection();
@@ -75,26 +92,26 @@ app.UseAuthorization();
 app.MapControllers();
 
 // --- SEEDING INICIAL GARANTIDO ---
-using (var scope = app.Services.CreateScope())
-{
-    var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+// using (var scope = app.Services.CreateScope())
+// {
+//     var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     
-    // Garante que o banco e as tabelas estejam criados
-    context.Database.EnsureCreated();
+//     // Garante que o banco e as tabelas estejam criados
+//     context.Database.EnsureCreated();
 
-    if (!context.Usuarios.Any())
-    {
-        var tesoureiro = new Usuario
-        {
-            Nome = "Billy Grahan",
-            Email = "tesourariaiasdgenibau@gmail.com",
-            Senha = BCrypt.Net.BCrypt.HashPassword("Admin@123"), // O próprio BCrypt gera a hash válida
-            Perfil = PerfilUsuario.Tesoureiro
-        };
+//     if (!context.Usuarios.Any())
+//     {
+//         var tesoureiro = new Usuario
+//         {
+//             Nome = "Billy Grahan",
+//             Email = "tesourariaiasdgenibau@gmail.com",
+//             Senha = BCrypt.Net.BCrypt.HashPassword("Admin@123"), // O próprio BCrypt gera a hash válida
+//             Perfil = PerfilUsuario.Tesoureiro
+//         };
 
-        context.Usuarios.Add(tesoureiro);
-        context.SaveChanges();
-    }
-}
+//         context.Usuarios.Add(tesoureiro);
+//         context.SaveChanges();
+//     }
+// }
 
 app.Run();

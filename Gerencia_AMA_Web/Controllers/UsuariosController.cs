@@ -4,6 +4,8 @@ using ApiTesourariaAMA.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using ApiTesourariaAMA.Enums;
+using ApiTesourariaAMA.Dtos;
 
 namespace ApiTesourariaAMA.Controllers;
 
@@ -38,6 +40,29 @@ public class UsuariosController : ControllerBase
         return Ok(new UsuarioResponseDto(u.Id, u.Nome, u.Email, u.Perfil));
     }
 
+    [HttpGet("TipoDoacao/{UsuarioId}")]
+    public async Task<IActionResult> GetTipoDoacaoByUsuarioId(int UsuarioId)
+    {
+        var usuario = await _context.Usuarios
+            .Include(u => u.Debitos)
+            .ThenInclude(d => d.TipoDoacao)
+            .FirstOrDefaultAsync(u => u.Id == UsuarioId);
+
+        if (usuario == null) return NotFound("Usuário não encontrado.");
+
+        var tiposDoacao = usuario.Debitos
+            .Select(d => new TipoDoacaoResponseDto(
+                d.TipoDoacao.Id,
+                d.TipoDoacao.Nome,
+                d.TipoDoacao.DataCriacao,
+                d.TipoDoacao.Data_Expiracao,
+                d.TipoDoacao.Descricao
+            ))
+            .ToList();
+
+        return Ok(tiposDoacao);
+    }
+
     [HttpPost]
     public async Task<IActionResult> CriarUsuario([FromBody] CriarUsuarioDto dto)
     {
@@ -49,7 +74,7 @@ public class UsuariosController : ControllerBase
             Nome = dto.Nome,
             Email = dto.Email,
             Senha = BCrypt.Net.BCrypt.HashPassword(dto.Senha),
-            Perfil = dto.Perfil
+            Perfil = PerfilUsuario.Membro // Por padrão, novos usuários são membros   
         };
 
         _context.Usuarios.Add(usuario);
