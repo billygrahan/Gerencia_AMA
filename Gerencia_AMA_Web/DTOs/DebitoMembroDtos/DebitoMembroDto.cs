@@ -11,13 +11,16 @@ public record CriarDebitoMembroDto
     [Required(ErrorMessage = "O ID do tipo de doação é obrigatório.")]
     public int TipoDoacaoId { get; init; }
 
+    public DateTime? MesReferencia { get; init; }
+
     [Required(ErrorMessage = "O valor é obrigatório.")]
     [Range(0.01, 999999.99, ErrorMessage = "O valor deve ser maior que zero.")]
     public decimal Valor { get; init; }
 }
 public record CriarMeuDebitoDto(
     int TipoDoacaoId,
-    decimal Valor
+    decimal Valor,
+    DateTime? MesReferencia = null
 );
 
 public record AnexarComprovanteDto
@@ -35,6 +38,7 @@ public record DebitoMembroResponseDto(
     decimal Valor,
     StatusDebito Status,
     DateTime DataCriacao,
+    DateTime? MesReferencia,
     int? ComprovanteId,
     string? UrlComprovante
 );

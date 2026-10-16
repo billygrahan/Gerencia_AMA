@@ -66,8 +66,8 @@ Esta documentação detalha todos os endpoints HTTP disponíveis no sistema de g
 ## 💳 2. Módulo de Débitos dos Membros (/api/DebitosMembros)
 
 ### GET /api/DebitosMembros
-- Descrição: Lista os débitos cadastrados no sistema. Se acessado por um Tesoureiro, retorna os débitos de todos os membros; se acessado por um Membro, retorna apenas os registros vinculados a ele.
-- Acesso: Autenticado (Requer Token JWT).
+- Descrição: Lista os débitos cadastrados no sistema.
+- Acesso: Restrito ao Tesoureiro. Apesar de o método conter uma filtragem para membros, a autorização aplicada ao endpoint impede que membros o acessem; para consultar os próprios débitos, use `GET /api/DebitosMembros/me`.
 - Retorno (200 OK): Lista de objetos de débitos contendo valor, status (EmAberto, Pago, Rejeitado), datas, usuário e comprovante vinculado.
 
 ---
@@ -87,7 +87,7 @@ Esta documentação detalha todos os endpoints HTTP disponíveis no sistema de g
 
 ### GET /api/DebitosMembros/{id}
 - Descrição: Detalha as informações de um débito específico buscando por seu identificador (Id).
-- Acesso: Autenticado.
+- Acesso: Restrito ao Tesoureiro.
 - Parâmetros de Rota: id (int).
 - Retorno (200 OK): Objeto do débito correspondente ou 404 Not Found.
 
@@ -102,7 +102,7 @@ Esta documentação detalha todos os endpoints HTTP disponíveis no sistema de g
 
 ### POST /api/DebitosMembros/meus-debitos
 - Descrição: Permite que o próprio membro crie uma intenção de débito/doação vinculada à sua conta sem precisar selecionar o UsuarioId.
-- Acesso: Autenticado (Qualquer perfil).
+- Acesso: Autenticado (Qualquer perfil, inclusive Tesoureiro).
 - Corpo da Requisição (CriarMeuDebitoDto):
   {
     "tipoDoacaoId": 2,
@@ -113,8 +113,17 @@ Esta documentação detalha todos os endpoints HTTP disponíveis no sistema de g
 ---
 
 ### POST /api/DebitosMembros/{id}/anexar-comprovante
-- Descrição: Envia a imagem (JPG, PNG) ou documento (PDF) de pagamento para o Cloudinary. Pode ser executado se o débito estiver EmAberto ou Rejeitado. Substitui comprovantes antigos caso existam e altera automaticamente o status para Pago.
-- Acesso: Autenticado.
+- Descrição: Permite ao Tesoureiro enviar ou substituir a imagem (JPG, PNG) ou documento (PDF) de pagamento de qualquer débito. Pode ser executado se o débito estiver EmAberto ou Rejeitado e altera automaticamente o status para Pago.
+- Acesso: Restrito ao Tesoureiro.
+- Formato: multipart/form-data
+- Parâmetros: id na rota e campo Arquivo contendo o documento/imagem.
+- Retorno (200 OK): Link público retornado pelo Cloudinary e o novo status atualizado.
+
+---
+
+### POST /api/DebitosMembros/meus-debitos/{id}/anexar-comprovante
+- Descrição: Permite ao usuário enviar ou substituir o comprovante do próprio débito. Pode ser executado se o débito estiver EmAberto ou Rejeitado e altera automaticamente o status para Pago.
+- Acesso: Autenticado. O débito deve pertencer ao usuário identificado pelo token JWT; caso contrário, a API retorna `403 Forbidden`.
 - Formato: multipart/form-data
 - Parâmetros: id na rota e campo Arquivo contendo o documento/imagem.
 - Retorno (200 OK): Link público retornado pelo Cloudinary e o novo status atualizado.
@@ -132,16 +141,16 @@ Esta documentação detalha todos os endpoints HTTP disponíveis no sistema de g
 ## 👤 3. Módulo de Membros (/api/Membros)
 
 ### GET /api/Membros/me
-- Descrição: Traz informações estendidas e detalhadas do cadastro de membro associado à conta do usuário logado.
+- Descrição: Retorna os dados básicos da conta do usuário logado (id, nome, e-mail e perfil). Não há uma ficha de membro separada implementada neste endpoint.
 - Acesso: Autenticado.
-- Retorno (200 OK): Detalhes da ficha do membro.
+- Retorno (200 OK): Dados básicos da conta (id, nome, e-mail e perfil).
 
 ---
 
 ### PUT /api/Membros/me
-- Descrição: Atualiza os dados da ficha de membro do usuário atual.
+- Descrição: Atualiza os dados básicos da conta do usuário atual (nome, e-mail e, opcionalmente, senha). O perfil/role não pode ser alterado por este endpoint.
 - Acesso: Autenticado.
-- Retorno (200 OK / 204 No Content): Confirmação de atualização.
+- Retorno (204 No Content): Confirmação de atualização.
 
 ---
 
@@ -209,7 +218,7 @@ Esta documentação detalha todos os endpoints HTTP disponíveis no sistema de g
 ### POST /api/Usuarios
 - Descrição: Permite que o Tesoureiro cadastre diretamente um usuário via painel administrativo.
 - Acesso: Restrito ao Tesoureiro.
-- Corpo da Requisição (CriarUsuarioDto):
+- Corpo da Requisição (CriarUsuarioDto). O perfil é opcional e assume Membro por padrão:
   {
     "nome": "Novo Membro",
     "email": "membro@email.com",
@@ -239,6 +248,26 @@ Esta documentação detalha todos os endpoints HTTP disponíveis no sistema de g
     "perfil": 2
   }
 - Retorno (204 No Content): Sucesso na alteração.
+
+---
+
+## Atualizações de doações por mês
+
+Doações agora possuem `mesReferencia` (primeiro dia do mês no formato ISO). O servidor usa o mês atual quando o campo não for enviado. A combinação membro + tipo de doação + mês é única; uma segunda tentativa retorna `409 Conflict`. Tipos só podem receber lançamentos entre o mês de criação e o mês de expiração, inclusive.
+
+### POST /api/DebitosMembros
+- Inclua `mesReferencia` junto a `usuarioId`, `tipoDoacaoId` e `valor`.
+
+### POST /api/DebitosMembros/meus-debitos
+- Inclua `mesReferencia` junto a `tipoDoacaoId` e `valor`.
+
+Os retornos de doação incluem `mesReferencia`. Em registros antigos, esse campo permanece nulo; o cliente deve apresentar o mês de `dataCriacao` como referência histórica.
+
+### PATCH /api/DebitosMembros/{id}/aprovar
+- Acesso: Restrito ao Tesoureiro.
+- Aprova um pagamento que possui comprovante anexado e altera seu status para `Pago`.
+
+O envio de comprovante mantém o status `EmAberto` até revisão da tesouraria. A rota existente `PATCH /api/DebitosMembros/{id}/rejeitar` continua disponível.
 
 ---
 

@@ -6,6 +6,7 @@ using ApiTesourariaAMA.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.Sqlite;
 using System.Security.Claims;
 
 namespace ApiTesourariaAMA.Controllers;
@@ -56,6 +57,7 @@ public class DebitosMembrosController : ControllerBase
                 d.Valor,
                 d.Status,
                 d.DataCriacao,
+                d.MesReferencia,
                 d.ComprovanteId,
                 d.Comprovante != null ? d.Comprovante.UrlCloudinary : null
             ))
@@ -90,6 +92,7 @@ public class DebitosMembrosController : ControllerBase
             debito.Valor,
             debito.Status,
             debito.DataCriacao,
+            debito.MesReferencia,
             debito.ComprovanteId,
             debito.Comprovante?.UrlCloudinary
         ));
@@ -114,6 +117,7 @@ public class DebitosMembrosController : ControllerBase
                 d.Valor,
                 d.Status,
                 d.DataCriacao,
+                d.MesReferencia,
                 d.ComprovanteId,
                 d.Comprovante != null ? d.Comprovante.UrlCloudinary : null
             ))
@@ -133,9 +137,15 @@ public class DebitosMembrosController : ControllerBase
         if (!usuarioExiste)
             return BadRequest(new { erro = $"Usuário com ID {dto.UsuarioId} não existe." });
 
-        var tipoExiste = await _context.TiposDoacao.AnyAsync(t => t.Id == dto.TipoDoacaoId);
-        if (!tipoExiste)
+        var tipo = await _context.TiposDoacao.FirstOrDefaultAsync(t => t.Id == dto.TipoDoacaoId);
+        if (tipo == null)
             return BadRequest(new { erro = $"Tipo de doação com ID {dto.TipoDoacaoId} não existe." });
+
+        var mes = NormalizarMes(dto.MesReferencia);
+        if (!TipoAbertoNoMes(tipo, mes))
+            return BadRequest(new { erro = "Este tipo de doação não está aberto para o mês selecionado." });
+        if (await JaExisteNoMes(dto.UsuarioId, dto.TipoDoacaoId, mes))
+            return Conflict(new { erro = "Já existe uma doação deste tipo para este usuário neste mês." });
 
         var debito = new DebitoMembro
         {
@@ -144,11 +154,19 @@ public class DebitosMembrosController : ControllerBase
             Valor = dto.Valor,
             Status = StatusDebito.EmAberto,
             DataCriacao = DateTime.UtcNow,
+            MesReferencia = mes,
             ComprovanteId = null
         };
 
         _context.DebitosMembros.Add(debito);
-        await _context.SaveChangesAsync();
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is SqliteException { SqliteErrorCode: 19 })
+        {
+            return Conflict(new { erro = "Já existe uma doação deste tipo para este usuário neste mês." });
+        }
 
         var usuario = await _context.Usuarios.FindAsync(dto.UsuarioId);
         var tipoDoacao = await _context.TiposDoacao.FindAsync(dto.TipoDoacaoId);
@@ -162,6 +180,7 @@ public class DebitosMembrosController : ControllerBase
             debito.Valor,
             debito.Status,
             debito.DataCriacao,
+            mes,
             null,
             null
         );
@@ -188,6 +207,12 @@ public class DebitosMembrosController : ControllerBase
         if (tipoDoacao == null)
             return BadRequest(new { erro = $"Tipo de doação com ID {dto.TipoDoacaoId} não existe." });
 
+        var mes = NormalizarMes(dto.MesReferencia);
+        if (!TipoAbertoNoMes(tipoDoacao, mes))
+            return BadRequest(new { erro = "Este tipo de doação não está aberto para o mês selecionado." });
+        if (await JaExisteNoMes(usuarioId, dto.TipoDoacaoId, mes))
+            return Conflict(new { erro = "Você já possui uma doação deste tipo neste mês." });
+
         var debito = new DebitoMembro
         {
             UsuarioId = usuarioId,
@@ -195,11 +220,19 @@ public class DebitosMembrosController : ControllerBase
             Valor = dto.Valor,
             Status = StatusDebito.EmAberto,
             DataCriacao = DateTime.UtcNow,
+            MesReferencia = mes,
             ComprovanteId = null
         };
 
         _context.DebitosMembros.Add(debito);
-        await _context.SaveChangesAsync();
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is SqliteException { SqliteErrorCode: 19 })
+        {
+            return Conflict(new { erro = "Você já possui uma doação deste tipo neste mês." });
+        }
 
         var response = new DebitoMembroResponseDto(
             debito.Id,
@@ -210,6 +243,7 @@ public class DebitosMembrosController : ControllerBase
             debito.Valor,
             debito.Status,
             debito.DataCriacao,
+            mes,
             null,
             null
         );
@@ -217,13 +251,27 @@ public class DebitosMembrosController : ControllerBase
         return CreatedAtAction(nameof(ObterPorId), new { id = debito.Id }, response);
     }
 
+    private static DateTime NormalizarMes(DateTime? valor)
+    {
+        var data = valor?.ToUniversalTime() ?? DateTime.UtcNow;
+        return new DateTime(data.Year, data.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+    }
+
+    private static bool TipoAbertoNoMes(TipoDoacao tipo, DateTime mes) =>
+        (tipo.MesAbertura ?? new DateTime(tipo.DataCriacao.Year, tipo.DataCriacao.Month, 1)) <= mes &&
+        mes <= new DateTime(tipo.Data_Expiracao.Year, tipo.Data_Expiracao.Month, 1);
+
+    private async Task<bool> JaExisteNoMes(int usuarioId, int tipoId, DateTime mes) =>
+        await _context.DebitosMembros.AnyAsync(d => d.UsuarioId == usuarioId && d.TipoDoacaoId == tipoId &&
+            (d.MesReferencia == mes || (d.MesReferencia == null && d.DataCriacao.Year == mes.Year && d.DataCriacao.Month == mes.Month)));
+
     /// <summary>
-    /// Envia ou substitui o comprovante no Cloudinary.
-    /// Permite upload apenas se o débito estiver EmAberto ou Rejeitado, alterando o status para Pago automaticamente.
+    /// Permite ao Tesoureiro enviar ou substituir o comprovante de qualquer débito.
     /// </summary>
     [HttpPost("{id:int}/anexar-comprovante")]
+    [Authorize(Roles = "Tesoureiro")]
     [Consumes("multipart/form-data")]
-    public async Task<IActionResult> AnexarComprovante(int id, [FromForm] AnexarComprovanteDto dto)
+    public async Task<IActionResult> AnexarComprovanteTesoureiro(int id, [FromForm] AnexarComprovanteDto dto)
     {
         var debito = await _context.DebitosMembros
             .Include(d => d.Comprovante)
@@ -232,7 +280,38 @@ public class DebitosMembrosController : ControllerBase
         if (debito == null)
             return NotFound(new { erro = "Débito não encontrado para vinculação do comprovante." });
 
-        // Permite apenas se o débito estiver EmAberto ou Rejeitado
+        return await ProcessarAnexoComprovante(debito, dto);
+    }
+
+    /// <summary>
+    /// Permite ao usuário enviar ou substituir o comprovante do próprio débito.
+    /// </summary>
+    [HttpPost("meus-debitos/{id:int}/anexar-comprovante")]
+    [Authorize]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> AnexarMeuComprovante(int id, [FromForm] AnexarComprovanteDto dto)
+    {
+        var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(usuarioIdClaim, out int usuarioId))
+            return Unauthorized(new { erro = "Usuário não autenticado ou token inválido." });
+
+        var debito = await _context.DebitosMembros
+            .Include(d => d.Comprovante)
+            .FirstOrDefaultAsync(d => d.Id == id);
+
+        if (debito == null)
+            return NotFound(new { erro = "Débito não encontrado para vinculação do comprovante." });
+
+        if (debito.UsuarioId != usuarioId)
+            return Forbid();
+
+        return await ProcessarAnexoComprovante(debito, dto);
+    }
+
+    private async Task<IActionResult> ProcessarAnexoComprovante(
+        DebitoMembro debito,
+        AnexarComprovanteDto dto)
+    {
         if (debito.Status == StatusDebito.Pago)
             return BadRequest(new { erro = "O débito já se encontra PAGO e não permite envio de novos comprovantes." });
 
@@ -257,14 +336,13 @@ public class DebitosMembrosController : ControllerBase
                 debito.ComprovanteId = comprovante.Id;
             }
 
-            // APROVAÇÃO AUTOMÁTICA
-            debito.Status = StatusDebito.Pago;
+            debito.Status = StatusDebito.EmAberto;
 
             await _context.SaveChangesAsync();
 
             return Ok(new
             {
-                mensagem = "Comprovante anexado e débito marcado como PAGO com sucesso!",
+                mensagem = "Comprovante anexado. A tesouraria deve revisar e aprovar o pagamento.",
                 debitoId = debito.Id,
                 comprovanteId = comprovante.Id,
                 status = debito.Status.ToString(),
@@ -275,6 +353,19 @@ public class DebitosMembrosController : ControllerBase
         {
             return StatusCode(500, new { erro = $"Falha ao processar o comprovante no Cloudinary: {ex.Message}" });
         }
+    }
+
+    [HttpPatch("{id:int}/aprovar")]
+    [Authorize(Roles = "Tesoureiro")]
+    public async Task<IActionResult> Aprovar(int id)
+    {
+        var debito = await _context.DebitosMembros.FindAsync(id);
+        if (debito == null) return NotFound(new { erro = "Doação não encontrada." });
+        if (debito.ComprovanteId == null)
+            return BadRequest(new { erro = "Anexe um comprovante antes de aprovar esta doação." });
+        debito.Status = StatusDebito.Pago;
+        await _context.SaveChangesAsync();
+        return Ok(new { mensagem = "Comprovante revisado e pagamento aprovado." });
     }
 
     /// <summary>

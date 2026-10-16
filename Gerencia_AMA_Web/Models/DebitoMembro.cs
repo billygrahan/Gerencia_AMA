@@ -25,6 +25,9 @@ public class DebitoMembro
     // Mantido com Data e Hora completa de criação
     public DateTime DataCriacao { get; set; } = DateTime.UtcNow;
 
+    // Primeiro dia do mês de referência da contribuição. Nulo apenas em registros legados.
+    public DateTime? MesReferencia { get; set; }
+
     [Required(ErrorMessage = "O valor é obrigatório.")]
     [Range(0.01, 999999.99, ErrorMessage = "O valor deve ser maior que zero.")]
     [Column(TypeName = "decimal(18,2)")]

@@ -1,0 +1,35 @@
+import {api} from './api.js';
+import {escapeHtml,monthLabel,money,badge,modal,toast} from './ui.js';
+
+export async function renderDonations(target,state,refresh){
+  const list=state.debits.filter(d=>String(d.mesReferencia||d.dataCriacao).slice(0,7)===state.month);
+  let status='all',query='';
+  const isAdmin=state.isTreasurer;
+  target.innerHTML=`<section class="panel"><div class="panel-head"><div><h2 class="panel-title">${isAdmin?'Doações':'Minhas doações'} · ${monthLabel(state.month)}</h2><div class="panel-note">Filtre pelo mês e situação; abra qualquer item para conferir os dados e o comprovante.</div></div><div class="legend"><span>${list.length} registros</span><span>${money(list.filter(d=>String(d.status)==='2'||String(d.status).toLowerCase()==='pago').reduce((a,d)=>a+Number(d.valor),0))} pagos</span></div></div><div class="toolbar" style="margin-bottom:14px"><input class="field search" id="search" placeholder="${isAdmin?'Buscar membro ou tipo…':'Buscar tipo de doação…'}">${isAdmin?'<select class="select" id="status"><option value="all">Todos os status</option><option value="open">Em aberto</option><option value="paid">Pagas</option><option value="rejected">Rejeitadas</option></select>':'<select class="select" id="status"><option value="all">Todos os status</option><option value="open">Em aberto</option><option value="paid">Pagas</option><option value="rejected">Rejeitadas</option></select>'}</div><div class="table-wrap"><table><thead><tr>${isAdmin?'<th>Membro</th>':''}<th>Tipo de doação</th><th>Valor</th><th>Status</th><th>Comprovante</th><th></th></tr></thead><tbody id="debitRows"></tbody></table></div><div class="mobile-cards" id="debitCards"></div></section>`;
+  const paint=()=>{
+    const q=query.trim().toLocaleLowerCase('pt-BR');
+    const filtered=list.filter(d=>{const st=String(d.status),isPaid=st==='2'||st.toLowerCase()==='pago',isRejected=st==='3'||st.toLowerCase()==='rejeitado';return(!q||`${d.nomeUsuario||''} ${d.nomeTipoDoacao}`.toLocaleLowerCase('pt-BR').includes(q))&&(status==='all'||(status==='paid'&&isPaid)||(status==='rejected'&&isRejected)||(status==='open'&&!isPaid&&!isRejected))});
+    const rows=filtered.map(d=>`<tr>${isAdmin?`<td><div class="person"><div class="avatar">${escapeHtml((d.nomeUsuario||'M').slice(0,1).toUpperCase())}</div><strong>${escapeHtml(d.nomeUsuario)}</strong></div></td>`:''}<td>${escapeHtml(d.nomeTipoDoacao)}</td><td><strong>${money(d.valor)}</strong></td><td>${badge(d.status)}</td><td>${d.urlComprovante?'<span style="color:#087f78;font-size:11px;font-weight:700">Anexado</span>':'<span style="color:#9aa7aa;font-size:11px">Pendente</span>'}</td><td><div class="actions"><button class="icon-btn" data-detail="${d.id}" aria-label="Ver detalhes">↗</button></div></td></tr>`).join('');
+    target.querySelector('#debitRows').innerHTML=rows||`<tr><td colspan="${isAdmin?5:4}"><div class="empty">Nenhuma doação encontrada para o mês e os filtros selecionados.</div></td></tr>`;
+    target.querySelector('#debitCards').innerHTML=filtered.map(d=>`<article class="mobile-row"><div class="mobile-row-top"><div class="person">${isAdmin?`<div class="avatar">${escapeHtml((d.nomeUsuario||'M').slice(0,1).toUpperCase())}</div>`:''}<div><strong>${escapeHtml(d.nomeUsuario||d.nomeTipoDoacao)}</strong><small>${isAdmin?escapeHtml(d.nomeTipoDoacao):monthLabel(d.mesReferencia||d.dataCriacao)}</small></div></div>${badge(d.status)}</div><div class="mobile-row-meta"><strong>${money(d.valor)}</strong><button class="btn secondary" data-detail="${d.id}">Detalhes</button></div></article>`).join('')||'<div class="empty">Nenhuma doação encontrada para o mês e os filtros selecionados.</div>';
+    target.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>showDetail(filtered.find(d=>d.id===Number(b.dataset.detail)),refresh,state));
+  };
+  target.querySelector('#search').oninput=e=>{query=e.target.value;paint()};
+  target.querySelector('#status').onchange=e=>{status=e.target.value;paint()};
+  paint();
+}
+
+function showDetail(d,refresh,state){
+  if(!d)return;
+  const proof=d.urlComprovante;
+  let preview='<div class="proof-preview"><span style="color:#8a999e;font-size:12px">Nenhum comprovante anexado.</span></div>';
+  if(proof){const image=/\.(jpg|jpeg|png|webp)($|\?)/i.test(proof);preview=image?`<div class="proof-preview"><img src="${escapeHtml(proof)}" alt="Comprovante de ${escapeHtml(d.nomeUsuario||'doação')}"></div>`:`<div class="proof-preview"><iframe title="Comprovante PDF" src="${escapeHtml(proof)}" style="width:100%;height:440px;border:0"></iframe></div><p><a href="${escapeHtml(proof)}" target="_blank" rel="noopener">Abrir ou baixar arquivo ↗</a></p>`;}
+  const isAdmin=state.isTreasurer,pending=String(d.status)==='1'||String(d.status).toLowerCase()==='emaberto',canMemberUpload=String(d.status)!=='2'&&String(d.status).toLowerCase()!=='pago';
+  const body=`<div class="detail-summary">${isAdmin?`<div class="detail-tile"><small>Membro</small><strong>${escapeHtml(d.nomeUsuario)}</strong></div>`:''}<div class="detail-tile"><small>Tipo</small><strong>${escapeHtml(d.nomeTipoDoacao)}</strong></div><div class="detail-tile"><small>Valor</small><strong>${money(d.valor)}</strong></div><div class="detail-tile"><small>Mês de referência</small><strong>${monthLabel(d.mesReferencia||d.dataCriacao)}</strong></div><div class="detail-tile"><small>Registrada em</small><strong>${new Date(d.dataCriacao).toLocaleDateString('pt-BR')}</strong></div><div class="detail-tile"><small>Situação</small><strong>${badge(d.status)}</strong></div></div><h3 style="font:700 13px Manrope;margin:20px 0 10px">Comprovante</h3>${preview}${!isAdmin&&canMemberUpload?`<label class="btn secondary" style="display:inline-block;margin-top:12px">${proof?'Substituir comprovante':'Enviar comprovante'}<input type="file" accept="image/jpeg,image/png,application/pdf" hidden id="proofFile"></label>`:''}${isAdmin&&!proof&&pending?'<label class="btn secondary" style="display:inline-block;margin-top:12px">Anexar comprovante<input type="file" accept="image/jpeg,image/png,application/pdf" hidden id="proofFile"></label>':''}`;
+  const actions=`<button class="btn ghost" data-close>Fechar</button>${isAdmin&&pending?`<button class="btn danger" data-reject>Rejeitar comprovante</button>${proof?'<button class="btn" data-approve>Aprovar pagamento</button>':''}`:''}`;
+  const m=modal('Detalhes da doação','Confira o mês, o status e o arquivo enviado.',body,actions,true);
+  m.querySelector('[data-close]').onclick=()=>m.remove();
+  m.querySelector('[data-reject]')?.addEventListener('click',async()=>{try{await api.reject(d.id);m.remove();toast('Comprovante rejeitado.');await refresh()}catch(e){toast(e.message)}});
+  m.querySelector('[data-approve]')?.addEventListener('click',async()=>{try{await api.approve(d.id);m.remove();toast('Pagamento aprovado.');await refresh()}catch(e){toast(e.message)}});
+  m.querySelector('#proofFile')?.addEventListener('change',async e=>{const file=e.target.files?.[0];if(!file)return;try{await api.uploadProof(d.id,file,isAdmin);m.remove();toast('Comprovante enviado para revisão.');await refresh()}catch(err){toast(err.message)}});
+}

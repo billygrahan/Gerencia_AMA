@@ -23,6 +23,11 @@ public class AppDbContext : DbContext
             .Property(d => d.Valor)
             .HasConversion<double>(); 
 
+        modelBuilder.Entity<DebitoMembro>()
+            .HasIndex(d => new { d.UsuarioId, d.TipoDoacaoId, d.MesReferencia })
+            .IsUnique()
+            .HasFilter("MesReferencia IS NOT NULL");
+
         // // Hash válida e testada para a senha: Admin@123
         // const string hashSenhaAdmin = "$2a$11$N7I1fPjZ.x/k4A2/6i4gO.8xW/V7lB7w3KjX7xZ/8m2K2d0f0G1e2";
 

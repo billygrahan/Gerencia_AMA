@@ -13,6 +13,8 @@ public record CriarTipoDoacaoDto
     /// </summary>
     public DateTime? DataExpiracao { get; init; }
 
+    public DateTime? MesAbertura { get; init; }
+
     [StringLength(255, ErrorMessage = "A descrição não pode exceder 255 caracteres.")]
     public string? Descricao { get; init; }
 }
@@ -25,6 +27,8 @@ public record AtualizarTipoDoacaoDto
 
     public DateTime DataExpiracao { get; init; }
 
+    public DateTime? MesAbertura { get; init; }
+
     [StringLength(255, ErrorMessage = "A descrição não pode exceder 255 caracteres.")]
     public string? Descricao { get; init; }
 }
@@ -33,6 +37,7 @@ public record TipoDoacaoResponseDto(
     int Id,
     string Nome,
     DateTime DataCriacao,
+    DateTime MesAbertura,
     DateTime DataExpiracao,
     string? Descricao
 );

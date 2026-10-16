@@ -1,0 +1,11 @@
+export const root=document.querySelector('#app');
+export const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+export const dateKey=value=>{if(typeof value==='string'&&/^\d{4}-\d{2}/.test(value))return value.slice(0,7);const d=new Date(value);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`};
+export const monthLabel=value=>{const key=dateKey(value),[year,month]=key.split('-').map(Number);return new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric'}).format(new Date(year,month-1,1,12))};
+export const money=value=>Number(value||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+export const badge=status=>{const value=String(status);const key=value==='2'||value.toLowerCase()==='pago'?'paid':value==='3'||value.toLowerCase()==='rejeitado'?'rejected':'open';const label=key==='paid'?'Pago':key==='rejected'?'Rejeitado':'Em aberto';return `<span class="badge ${key}"><i class="dot ${key}"></i>${label}</span>`};
+export function toast(message){const el=document.querySelector('#toast');el.textContent=message;el.classList.add('show');clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>el.classList.remove('show'),3100)}
+export function modal(title,subtitle,body,actions='',wide=false){const el=document.createElement('div');el.className='modal-backdrop';el.innerHTML=`<section class="modal ${wide?'wide':''}" role="dialog" aria-modal="true"><header class="modal-head"><div><h2>${escapeHtml(title)}</h2><p>${escapeHtml(subtitle||'')}</p></div><button class="close" aria-label="Fechar">×</button></header><div class="modal-body">${body}</div><footer class="modal-foot">${actions}</footer></section>`;el.querySelector('.close').onclick=()=>el.remove();el.addEventListener('click',e=>{if(e.target===el)el.remove()});document.body.append(el);return el}
+export function monthInputValue(date){return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`}
+export function monthDate(value){const [year,month]=dateKey(value).split('-').map(Number);return new Date(year,month-1,1,12)}
+export const activeInMonth=(type,month)=>dateKey(type.mesAbertura||type.dataCriacao)<=month&&month<=dateKey(type.dataExpiracao);

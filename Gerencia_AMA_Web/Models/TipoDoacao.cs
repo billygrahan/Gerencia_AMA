@@ -7,6 +7,7 @@ namespace ApiTesourariaAMA.Models;
 public class TipoDoacao
 {
     private DateTime _dataExpiracao = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1);
+    private DateTime? _mesAbertura;
 
     [Key]
     public int Id { get; set; }
@@ -16,6 +17,15 @@ public class TipoDoacao
     public string Nome { get; set; } = string.Empty;
 
     public DateTime DataCriacao { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Mês em que a campanha começa a aceitar doações. Nulo em campanhas antigas.</summary>
+    public DateTime? MesAbertura
+    {
+        get => _mesAbertura;
+        set => _mesAbertura = value.HasValue
+            ? new DateTime(value.Value.Year, value.Value.Month, 1, 0, 0, 0, DateTimeKind.Utc)
+            : null;
+    }
 
     /// 
     /// Armazena no formato Ano-Mês (truncado no primeiro dia do mês à meia-noite).

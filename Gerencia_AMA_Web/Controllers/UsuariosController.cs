@@ -55,6 +55,7 @@ public class UsuariosController : ControllerBase
                 d.TipoDoacao.Id,
                 d.TipoDoacao.Nome,
                 d.TipoDoacao.DataCriacao,
+                d.TipoDoacao.MesAbertura ?? new DateTime(d.TipoDoacao.DataCriacao.Year, d.TipoDoacao.DataCriacao.Month, 1),
                 d.TipoDoacao.Data_Expiracao,
                 d.TipoDoacao.Descricao
             ))
@@ -74,7 +75,7 @@ public class UsuariosController : ControllerBase
             Nome = dto.Nome,
             Email = dto.Email,
             Senha = BCrypt.Net.BCrypt.HashPassword(dto.Senha),
-            Perfil = PerfilUsuario.Membro // Por padrão, novos usuários são membros   
+            Perfil = dto.Perfil
         };
 
         _context.Usuarios.Add(usuario);
@@ -89,6 +90,9 @@ public class UsuariosController : ControllerBase
     {
         var usuario = await _context.Usuarios.FindAsync(id);
         if (usuario == null) return NotFound("Usuário não encontrado.");
+
+        if (await _context.Usuarios.AnyAsync(u => u.Id != id && u.Email.ToLower() == dto.Email.ToLower()))
+            return BadRequest("E-mail já cadastrado por outro usuário.");
 
         usuario.Nome = dto.Nome;
         usuario.Email = dto.Email;

@@ -17,28 +17,6 @@ namespace Gerencia_AMA_Web.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
 
-            modelBuilder.Entity("ApiTesourariaAMA.Models.Comprovante", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("DataEnvio")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("PublicIdCloudinary")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("UrlCloudinary")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Comprovantes");
-                });
-
             modelBuilder.Entity("ApiTesourariaAMA.Models.DebitoMembro", b =>
                 {
                     b.Property<int>("Id")
@@ -49,6 +27,9 @@ namespace Gerencia_AMA_Web.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("DataCriacao")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("MesReferencia")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("Status")
@@ -69,7 +50,9 @@ namespace Gerencia_AMA_Web.Migrations
 
                     b.HasIndex("TipoDoacaoId");
 
-                    b.HasIndex("UsuarioId");
+                    b.HasIndex("UsuarioId", "TipoDoacaoId", "MesReferencia")
+                        .IsUnique()
+                        .HasFilter("MesReferencia IS NOT NULL");
 
                     b.ToTable("DebitosMembros");
                 });
@@ -88,6 +71,9 @@ namespace Gerencia_AMA_Web.Migrations
 
                     b.Property<string>("Descricao")
                         .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("MesAbertura")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Nome")
@@ -133,21 +119,33 @@ namespace Gerencia_AMA_Web.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Usuarios");
+                });
 
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            Email = "tesourariaiasdgenibau@gmail.com",
-                            Nome = "Billy Grahan",
-                            Perfil = 2,
-                            Senha = "$2a$11$N7I1fPjZ.x/k4A2/6i4gO.8xW/V7lB7w3KjX7xZ/8m2K2d0f0G1e2"
-                        });
+            modelBuilder.Entity("Comprovante", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("DataEnvio")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PublicIdCloudinary")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UrlCloudinary")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Comprovantes");
                 });
 
             modelBuilder.Entity("ApiTesourariaAMA.Models.DebitoMembro", b =>
                 {
-                    b.HasOne("ApiTesourariaAMA.Models.Comprovante", "Comprovante")
+                    b.HasOne("Comprovante", "Comprovante")
                         .WithMany()
                         .HasForeignKey("ComprovanteId");
 
