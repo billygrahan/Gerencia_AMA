@@ -1,4 +1,4 @@
-namespace ApiTesourariaAMA.Models;
+using System.ComponentModel.DataAnnotations;
 
 public class Comprovante
 {

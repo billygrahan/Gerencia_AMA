@@ -40,7 +40,7 @@ public class UsuariosController : ControllerBase
         return Ok(new UsuarioResponseDto(u.Id, u.Nome, u.Email, u.Perfil));
     }
 
-    [HttpGet("TipoDoacao/{UsuarioId}")]
+    [HttpGet("TipoDoacoes/{UsuarioId}")]
     public async Task<IActionResult> GetTipoDoacaoByUsuarioId(int UsuarioId)
     {
         var usuario = await _context.Usuarios

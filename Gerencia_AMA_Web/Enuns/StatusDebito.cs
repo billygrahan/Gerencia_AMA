@@ -1,7 +1,8 @@
 namespace ApiTesourariaAMA.Enums;
+
 public enum StatusDebito
 {
-    Pendente = 1,
-    EmAnalise = 2,
-    Pago = 3
+    EmAberto = 1,
+    Pago = 2,
+    Rejeitado = 3
 }

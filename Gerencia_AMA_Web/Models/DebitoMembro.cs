@@ -31,7 +31,7 @@ public class DebitoMembro
     public decimal Valor { get; set; }
 
     [Required]
-    public StatusDebito Status { get; set; } = StatusDebito.Pendente;
+    public StatusDebito Status { get; set; } = StatusDebito.EmAberto;
 
     // Tornando opcional (nullable), já que na criação o débito não possui comprovante registrado
     public int? ComprovanteId { get; set; }
