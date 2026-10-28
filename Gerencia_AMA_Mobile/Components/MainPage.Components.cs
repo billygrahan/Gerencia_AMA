@@ -60,11 +60,12 @@ private View ProfileAvatar()
 
 private View MonthSelector()
     {
-        var title = Label(_selectedMonth.ToString("yyyy", System.Globalization.CultureInfo.InvariantCulture), 13, Ink, true);
+        var title = Label(_selectedMonth.ToString("yyyy", System.Globalization.CultureInfo.InvariantCulture), 13, Ink, true, 0, TextAlignment.Center);
         var previous = Button("‹", Colors.White, Ink);previous.WidthRequest = 40;previous.HeightRequest = 38;previous.Clicked += (_, _) => { _selectedMonth = _selectedMonth.AddYears(-1); RefreshMonthlyView(); };
         var next = Button("›", Colors.White, Ink);next.WidthRequest = 40;next.HeightRequest = 38;next.Clicked += (_, _) => { _selectedMonth = _selectedMonth.AddYears(1); RefreshMonthlyView(); };
         var yearHeader = new Grid { ColumnDefinitions = Columns(40, Star, 40), Children = { previous, title, next } };yearHeader.SetColumn(title, 1);yearHeader.SetColumn(next, 2);
         var months = new HorizontalStackLayout { Spacing = 8 };
+        Border? selectedCard = null;
         for (var month = 1; month <= 12; month++)
         {
             var date = new DateTime(_selectedMonth.Year, month, 1);
@@ -74,10 +75,13 @@ private View MonthSelector()
             var typeOpen = ViewModel.Types.Any(t => t.OpeningMonth <= date && date <= new DateTime(t.DataExpiracao.Year, t.DataExpiracao.Month, 1));
             var hint = pending > 0 ? $"{pending} pend." : records.Count > 0 ? "Em dia" : typeOpen ? "Aberta" : "Fechada";
             var selected = date.Year == _selectedMonth.Year && date.Month == _selectedMonth.Month;
-            var card = new Border { WidthRequest = 82, BackgroundColor = selected ? Teal : Colors.White, Stroke = selected ? Teal : Color.FromArgb("#E1E9ED"), StrokeThickness = 1, StrokeShape = new RoundRectangle { CornerRadius = 13 }, Padding = new Thickness(9, 8), Content = new VerticalStackLayout { Spacing = 4, Children = { Label(date.ToString("MMM", new System.Globalization.CultureInfo("pt-BR")).ToUpperInvariant(), 11, selected ? Colors.White : Ink, true), Label(hint, 9, selected ? Color.FromArgb("#D5F5F0") : pending > 0 ? Color.FromArgb("#BE8423") : Muted) } } };
+            var card = new Border { WidthRequest = 82, BackgroundColor = selected ? Teal : Colors.White, Stroke = selected ? Teal : Color.FromArgb("#E1E9ED"), StrokeThickness = 1, StrokeShape = new RoundRectangle { CornerRadius = 13 }, Padding = new Thickness(9, 8), Content = new VerticalStackLayout { Spacing = 4, HorizontalOptions = LayoutOptions.Center, Children = { Label(date.ToString("MMM", new System.Globalization.CultureInfo("pt-BR")).ToUpperInvariant(), 11, selected ? Colors.White : Ink, true, 0, TextAlignment.Center), Label(hint, 9, selected ? Color.FromArgb("#D5F5F0") : pending > 0 ? Color.FromArgb("#BE8423") : Muted, false, 0, TextAlignment.Center) } } };
+            if (selected) selectedCard = card;
             var tap = new TapGestureRecognizer();tap.Tapped += (_, _) => { _selectedMonth = date; RefreshMonthlyView(); };card.GestureRecognizers.Add(tap);months.Add(card);
         }
-        return new VerticalStackLayout { Spacing = 8, Children = { yearHeader, new ScrollView { Orientation = ScrollOrientation.Horizontal, Content = months } } };
+        var monthStrip = new ScrollView { Orientation = ScrollOrientation.Horizontal, HorizontalScrollBarVisibility = ScrollBarVisibility.Never, Content = months };
+        monthStrip.Loaded += async (_, _) => { if (selectedCard != null) await monthStrip.ScrollToAsync(selectedCard, ScrollToPosition.Center, false); };
+        return new VerticalStackLayout { Spacing = 8, Children = { yearHeader, monthStrip } };
     }
 
 private void RefreshMonthlyView()
@@ -88,15 +92,14 @@ private void RefreshMonthlyView()
 
 private async Task ShowAccountMenu()
     {
-        var actions = new List<string> { "Minha conta" };
-        if (ViewModel.Api.IsTreasurer) actions.Add("Gerenciar tipos de doação");
-        if (ViewModel.Api.IsTreasurer) actions.Add(_showingTreasury ? "Voltar à área do membro" : "Abrir tesouraria");
-        var action = await DisplayActionSheetAsync(ViewModel.Api.CurrentUser?.Nome ?? "Conta AMA", "Cancelar", "Sair", actions.ToArray());
-        if (action == "Minha conta") await OpenAccountSettings();
-        else if (action == "Gerenciar tipos de doação") await ShowDonationTypes();
-        else if (action == "Abrir tesouraria") await ShowAdmin();
-        else if (action == "Voltar à área do membro") ShowMemberHome();
-        else if (action == "Sair")
+        var user = ViewModel.Api.CurrentUser;
+        if (user == null) return;
+        var action = await new AccountMenuPage(user, ViewModel.Api.IsTreasurer, _showingTreasury).PresentAsync(this);
+        if (action == AccountMenuAction.Settings) await OpenAccountSettings();
+        else if (action == AccountMenuAction.ManageTypes) await ShowDonationTypes();
+        else if (action == AccountMenuAction.ManageUsers || action == AccountMenuAction.OpenTreasury) await ShowAdmin();
+        else if (action == AccountMenuAction.MemberArea) ShowMemberHome();
+        else if (action == AccountMenuAction.Logout)
         {
             if (await DisplayAlertAsync("Sair da conta", "Deseja encerrar sua sessão neste dispositivo?", "Sair", "Cancelar"))
             {

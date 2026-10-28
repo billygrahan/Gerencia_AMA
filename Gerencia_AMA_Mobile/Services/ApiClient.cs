@@ -48,11 +48,11 @@ public sealed class ApiClient
         if (CurrentUser != null) CurrentUser = CurrentUser with { Nome = nome, Email = email };
     }
 
-    public async Task<TipoDoacao?> CreateDonationType(string nome, string? descricao, DateTime mesAbertura, DateTime dataExpiracao) =>
-        await Post<TipoDoacao>("api/TiposDoacao", new { nome, descricao, mesAbertura, dataExpiracao });
+    public async Task<TipoDoacao?> CreateDonationType(string nome, string? descricao, decimal valorPadrao, DateTime mesAbertura, DateTime dataExpiracao, bool todosUsuarios, List<int> usuariosIds) =>
+        await Post<TipoDoacao>("api/TiposDoacao", new { nome, descricao, valorPadrao, mesAbertura, dataExpiracao, todosUsuarios, usuariosIds });
 
-    public async Task UpdateDonationType(int id, string nome, string? descricao, DateTime mesAbertura, DateTime dataExpiracao) =>
-        await Put($"api/TiposDoacao/{id}", new { nome, descricao, mesAbertura, dataExpiracao });
+    public async Task UpdateDonationType(int id, string nome, string? descricao, decimal valorPadrao, DateTime mesAbertura, DateTime dataExpiracao, bool todosUsuarios, List<int> usuariosIds) =>
+        await Put($"api/TiposDoacao/{id}", new { nome, descricao, valorPadrao, mesAbertura, dataExpiracao, todosUsuarios, usuariosIds });
 
     public async Task DeleteDonationType(int id)
     {
@@ -72,6 +72,9 @@ public sealed class ApiClient
         var response = await _http.PostAsJsonAsync("api/Usuarios", new { nome, email, senha });
         if (!response.IsSuccessStatusCode) throw new ApiException(await ReadError(response));
     }
+
+    public async Task UpdateUser(int id, string nome, string email, string? novaSenha, int perfil) =>
+        await Put($"api/Usuarios/{id}", new { nome, email, novaSenha = string.IsNullOrWhiteSpace(novaSenha) ? null : novaSenha, perfil });
 
     public async Task UploadProof(int debitId, string filePath, bool asTreasurer = false)
     {

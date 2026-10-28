@@ -27,6 +27,8 @@ builder.Services.AddSingleton(cloudinary);
 // 3. Registrar Serviços Locais (Assinatura explícita de TService no .NET 10)
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<CloudinaryService>();
+builder.Services.AddScoped<MonthlyDebitGenerator>();
+builder.Services.AddHostedService<MonthlyDebitGenerationWorker>();
 
 // 4. Configurar Autenticação JWT
 var jwtKey = builder.Configuration["Jwt:Key"] ?? "ChaveSeguraDeApenasTestesComPeloMenos32Caracteres!";
@@ -109,8 +111,7 @@ app.MapControllers();
 // using (var scope = app.Services.CreateScope())
 // {
 //     var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    
-//     // Garante que o banco e as tabelas estejam criados
+
 //     context.Database.EnsureCreated();
 
 //     if (!context.Usuarios.Any())
@@ -119,7 +120,7 @@ app.MapControllers();
 //         {
 //             Nome = "Billy Grahan",
 //             Email = "tesourariaiasdgenibau@gmail.com",
-//             Senha = BCrypt.Net.BCrypt.HashPassword("Admin@123"), // O próprio BCrypt gera a hash válida
+//             Senha = BCrypt.Net.BCrypt.HashPassword("Admin@123"),
 //             Perfil = PerfilUsuario.Tesoureiro
 //         };
 

@@ -64,11 +64,44 @@ public static class DatabaseSchemaInitializer
                     addOpeningMonth.CommandText = "ALTER TABLE TiposDoacao ADD COLUMN MesAbertura TEXT NULL;";
                     await addOpeningMonth.ExecuteNonQueryAsync();
                 }
+
+                await EnsureColumnAsync(connection, "TiposDoacao", "ValorPadrao", "TEXT NOT NULL DEFAULT '0'");
+                await EnsureColumnAsync(connection, "TiposDoacao", "TodosUsuarios", "INTEGER NOT NULL DEFAULT 1");
+
+                await using var joinTable = connection.CreateCommand();
+                joinTable.CommandText = """
+                    CREATE TABLE IF NOT EXISTS TipoDoacaoUsuarios (
+                        TipoDoacaoId INTEGER NOT NULL,
+                        UsuarioId INTEGER NOT NULL,
+                        PRIMARY KEY (TipoDoacaoId, UsuarioId),
+                        FOREIGN KEY (TipoDoacaoId) REFERENCES TiposDoacao(Id) ON DELETE CASCADE,
+                        FOREIGN KEY (UsuarioId) REFERENCES Usuarios(Id) ON DELETE CASCADE
+                    );
+                    CREATE INDEX IF NOT EXISTS IX_TipoDoacaoUsuarios_UsuarioId ON TipoDoacaoUsuarios (UsuarioId);
+                    """;
+                await joinTable.ExecuteNonQueryAsync();
             }
         }
         finally
         {
             if (closeAfter) await connection.CloseAsync();
         }
+    }
+
+    private static async Task EnsureColumnAsync(System.Data.Common.DbConnection connection, string table, string column, string definition)
+    {
+        await using var columns = connection.CreateCommand();
+        columns.CommandText = $"PRAGMA table_info('{table}');";
+        var exists = false;
+        await using (var reader = await columns.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+                if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase)) exists = true;
+        }
+
+        if (exists) return;
+        await using var addColumn = connection.CreateCommand();
+        addColumn.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {definition};";
+        await addColumn.ExecuteNonQueryAsync();
     }
 }

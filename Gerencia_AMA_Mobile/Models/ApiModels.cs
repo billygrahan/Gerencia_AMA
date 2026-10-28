@@ -15,4 +15,7 @@ public sealed record TipoDoacao(int Id, string Nome, DateTime DataCriacao, DateT
 {
     public DateTime? MesAbertura { get; init; }
     public DateTime OpeningMonth => MesAbertura ?? new DateTime(DataCriacao.Year, DataCriacao.Month, 1);
+    public decimal ValorPadrao { get; init; }
+    public bool TodosUsuarios { get; init; } = true;
+    public List<int> UsuariosIds { get; init; } = [];
 }

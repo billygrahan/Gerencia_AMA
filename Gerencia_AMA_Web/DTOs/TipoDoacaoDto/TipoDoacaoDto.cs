@@ -15,6 +15,13 @@ public record CriarTipoDoacaoDto
 
     public DateTime? MesAbertura { get; init; }
 
+    [Range(0.01, 999999.99)]
+    public decimal ValorPadrao { get; init; }
+
+    public bool TodosUsuarios { get; init; } = true;
+
+    public List<int> UsuariosIds { get; init; } = [];
+
     [StringLength(255, ErrorMessage = "A descrição não pode exceder 255 caracteres.")]
     public string? Descricao { get; init; }
 }
@@ -29,6 +36,13 @@ public record AtualizarTipoDoacaoDto
 
     public DateTime? MesAbertura { get; init; }
 
+    [Range(0.01, 999999.99)]
+    public decimal ValorPadrao { get; init; }
+
+    public bool TodosUsuarios { get; init; } = true;
+
+    public List<int> UsuariosIds { get; init; } = [];
+
     [StringLength(255, ErrorMessage = "A descrição não pode exceder 255 caracteres.")]
     public string? Descricao { get; init; }
 }
@@ -39,5 +53,8 @@ public record TipoDoacaoResponseDto(
     DateTime DataCriacao,
     DateTime MesAbertura,
     DateTime DataExpiracao,
-    string? Descricao
+    string? Descricao,
+    decimal ValorPadrao,
+    bool TodosUsuarios,
+    List<int> UsuariosIds
 );

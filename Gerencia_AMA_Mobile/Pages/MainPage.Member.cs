@@ -29,7 +29,7 @@ private void ShowMemberHome()
         summary.Add(new Grid { ColumnDefinitions = Columns(Star, Star), Children = { Stat("Pagas", paid.Count.ToString()), Stat("Em aberto", outstanding.Count.ToString(), 1) } });
         content.Add(Card(summary, Teal, 22));
         var actions = new Grid { ColumnDefinitions = Columns(Star, Star), ColumnSpacing = 12 };
-        var donate = Button("＋  Fazer doação", Colors.White, Teal); donate.BorderColor = Color.FromArgb("#DCE7EA"); donate.BorderWidth = 1; donate.Clicked += async (_, _) => await CreateMyDonation(); actions.Add(donate);
+        var donate = Button("↑  Enviar comprovante", Colors.White, Teal); donate.BorderColor = Color.FromArgb("#DCE7EA"); donate.BorderWidth = 1; donate.Clicked += async (_, _) => await CreateMyDonation(); actions.Add(donate);
         if (ViewModel.Api.IsTreasurer) { var admin = Button("Painel tesouraria  →", Color.FromArgb("#E5F6F4"), Teal); admin.FontSize = 13; admin.Clicked += async (_, _) => await ShowAdmin(); actions.Add(admin, 1); }
         else { var account = Button("Minha conta", Colors.White, Ink); account.BorderColor = Color.FromArgb("#DCE7EA"); account.BorderWidth = 1; account.Clicked += async (_, _) => await OpenAccountSettings(); actions.Add(account, 1); }
         content.Add(actions);
@@ -60,20 +60,14 @@ private void ShowMemberHome()
 
 private async Task CreateMyDonation()
     {
-        if (ViewModel.Types.Count == 0) { await DisplayAlertAsync("Sem campanhas", "Ainda não há tipos de doação cadastrados.", "OK"); return; }
         var personalDebits = ViewModel.Debits.Where(x => x.UsuarioId == ViewModel.Api.CurrentUser?.Id).ToList();
-        var submission = await new DonationFormPage(ViewModel.Types, personalDebits, _selectedMonth).PresentAsync(this);
-        if (submission == null) return;
-        await Run(async () =>
-        {
-            var debit = await ViewModel.Api.CreateMyDebit(submission.DonationTypeId, submission.Amount, submission.ReferenceMonth);
-            if (debit != null)
-            {
-                var attach = await DisplayAlertAsync("Contribuição criada", "Deseja enviar o comprovante agora?", "Enviar", "Depois");
-                if (attach) await PickProof(debit.Id);
-            }
-            await ViewModel.RefreshMemberDebitsAsync(); ShowMemberHome();
-        });
+        var pending = personalDebits.Where(x => x.ReferenceMonth.Year == _selectedMonth.Year && x.ReferenceMonth.Month == _selectedMonth.Month && x.StatusName != "Pago").ToList();
+        if (pending.Count == 0) { await DisplayAlertAsync("Sem pendências neste mês", "Os débitos da campanha são gerados automaticamente. Não há uma doação em aberto para anexar comprovante neste mês.", "OK"); return; }
+        var options = pending.Select(x => $"{x.NomeTipoDoacao} · {x.Valor:C} · #{x.Id}").ToArray();
+        var selected = await DisplayActionSheetAsync("Escolha a doação", "Cancelar", null, options);
+        var index = Array.IndexOf(options, selected);
+        if (index < 0) return;
+        await PickProof(pending[index].Id);
     }
 
 private static bool IsDonationTypeOpen(TipoDoacao type, DateTime month)

@@ -4,6 +4,7 @@ using ApiTesourariaAMA.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using ApiTesourariaAMA.Services;
 
 namespace ApiTesourariaAMA.Controllers;
 
@@ -13,10 +14,12 @@ namespace ApiTesourariaAMA.Controllers;
 public class TiposDoacaoController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly MonthlyDebitGenerator _monthlyDebitGenerator;
 
-    public TiposDoacaoController(AppDbContext context)
+    public TiposDoacaoController(AppDbContext context, MonthlyDebitGenerator monthlyDebitGenerator)
     {
         _context = context;
+        _monthlyDebitGenerator = monthlyDebitGenerator;
     }
 
     /// <summary>
@@ -25,15 +28,16 @@ public class TiposDoacaoController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<TipoDoacaoResponseDto>>> ObterTodos()
     {
-        var entities = await _context.TiposDoacao.AsNoTracking().ToListAsync();
-        var tipos = entities.Select(t => new TipoDoacaoResponseDto(
-                t.Id,
-                t.Nome,
-                t.DataCriacao,
-                t.MesAbertura ?? new DateTime(t.DataCriacao.Year, t.DataCriacao.Month, 1),
-                t.Data_Expiracao,
-                t.Descricao
-            )).ToList();
+        var query = _context.TiposDoacao.Include(t => t.UsuariosEspecificos).AsNoTracking();
+        var entities = await query.ToListAsync();
+        if (!User.IsInRole("Tesoureiro"))
+        {
+            if (!int.TryParse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var userId))
+                return Unauthorized();
+            entities = entities.Where(t => t.TodosUsuarios || t.UsuariosEspecificos.Any(u => u.Id == userId)).ToList();
+        }
+        var includeRecipients = User.IsInRole("Tesoureiro");
+        var tipos = entities.Select(type => ToResponse(type, includeRecipients)).ToList();
 
         return Ok(tipos);
     }
@@ -44,23 +48,17 @@ public class TiposDoacaoController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<TipoDoacaoResponseDto>> ObterPorId(int id)
     {
-        var tipo = await _context.TiposDoacao
+        var tipo = await _context.TiposDoacao.Include(t => t.UsuariosEspecificos)
             .AsNoTracking()
             .FirstOrDefaultAsync(t => t.Id == id);
 
         if (tipo == null)
             return NotFound("Tipo de doação não encontrado.");
 
-        var response = new TipoDoacaoResponseDto(
-            tipo.Id,
-            tipo.Nome,
-            tipo.DataCriacao,
-            tipo.MesAbertura ?? new DateTime(tipo.DataCriacao.Year, tipo.DataCriacao.Month, 1),
-            tipo.Data_Expiracao,
-            tipo.Descricao
-        );
+        if (!User.IsInRole("Tesoureiro") && !TipoDisponivelParaUsuario(tipo, User))
+            return NotFound("Tipo de doação não encontrado.");
 
-        return Ok(response);
+        return Ok(ToResponse(tipo, User.IsInRole("Tesoureiro")));
     }
 
     /// <summary>
@@ -75,7 +73,9 @@ public class TiposDoacaoController : ControllerBase
             Nome = dto.Nome,
             Descricao = dto.Descricao,
             DataCriacao = DateTime.UtcNow,
-            MesAbertura = NormalizarMes(dto.MesAbertura ?? DateTime.UtcNow)
+            MesAbertura = NormalizarMes(dto.MesAbertura ?? DateTime.UtcNow),
+            ValorPadrao = dto.ValorPadrao,
+            TodosUsuarios = dto.TodosUsuarios
         };
 
         if (dto.DataExpiracao.HasValue)
@@ -86,17 +86,16 @@ public class TiposDoacaoController : ControllerBase
         if (novoTipo.MesAbertura!.Value > novoTipo.Data_Expiracao)
             return BadRequest(new { erro = "O mês de abertura precisa ser anterior ou igual ao mês de encerramento." });
 
+        var destinatarios = await ObterDestinatariosSelecionados(dto.TodosUsuarios, dto.UsuariosIds);
+        if (destinatarios == null)
+            return BadRequest(new { erro = "A seleção contém usuários inexistentes." });
+        novoTipo.UsuariosEspecificos = destinatarios;
+
         _context.TiposDoacao.Add(novoTipo);
         await _context.SaveChangesAsync();
+        await _monthlyDebitGenerator.TryEnsureDueDebitsAsync();
 
-        var response = new TipoDoacaoResponseDto(
-            novoTipo.Id,
-            novoTipo.Nome,
-            novoTipo.DataCriacao,
-            novoTipo.MesAbertura ?? new DateTime(novoTipo.DataCriacao.Year, novoTipo.DataCriacao.Month, 1),
-            novoTipo.Data_Expiracao,
-            novoTipo.Descricao
-        );
+        var response = ToResponse(novoTipo);
 
         return CreatedAtAction(nameof(ObterPorId), new { id = novoTipo.Id }, response);
     }
@@ -108,7 +107,7 @@ public class TiposDoacaoController : ControllerBase
     [Authorize(Roles = "Tesoureiro")]
     public async Task<IActionResult> Atualizar(int id, [FromBody] AtualizarTipoDoacaoDto dto)
     {
-        var tipo = await _context.TiposDoacao.FindAsync(id);
+        var tipo = await _context.TiposDoacao.Include(t => t.UsuariosEspecificos).FirstOrDefaultAsync(t => t.Id == id);
 
         if (tipo == null)
             return NotFound("Tipo de doação não encontrado.");
@@ -118,17 +117,49 @@ public class TiposDoacaoController : ControllerBase
         if (openingMonth > expirationMonth)
             return BadRequest("O mês de abertura precisa ser anterior ou igual ao mês de encerramento.");
 
+        var destinatarios = await ObterDestinatariosSelecionados(dto.TodosUsuarios, dto.UsuariosIds);
+        if (destinatarios == null)
+            return BadRequest("A seleção contém usuários inexistentes.");
+
         tipo.Nome = dto.Nome;
         tipo.Descricao = dto.Descricao;
         tipo.MesAbertura = openingMonth;
         tipo.Data_Expiracao = expirationMonth;
+        tipo.ValorPadrao = dto.ValorPadrao;
+        tipo.TodosUsuarios = dto.TodosUsuarios;
+        tipo.UsuariosEspecificos.Clear();
+        foreach (var destinatario in destinatarios) tipo.UsuariosEspecificos.Add(destinatario);
 
         await _context.SaveChangesAsync();
+        await _monthlyDebitGenerator.TryEnsureDueDebitsAsync();
 
         return NoContent();
     }
 
     private static DateTime NormalizarMes(DateTime data) => new(data.Year, data.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
+    private async Task<List<Usuario>?> ObterDestinatariosSelecionados(bool todosUsuarios, List<int> usuariosIds)
+    {
+        if (todosUsuarios) return [];
+        var ids = (usuariosIds ?? []).Distinct().ToList();
+        if (ids.Count == 0) return null;
+        var destinatarios = await _context.Usuarios.Where(u => ids.Contains(u.Id)).ToListAsync();
+        return destinatarios.Count == ids.Count ? destinatarios : null;
+    }
+
+    private static bool TipoDisponivelParaUsuario(TipoDoacao tipo, System.Security.Claims.ClaimsPrincipal user) =>
+        tipo.TodosUsuarios || (int.TryParse(user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var userId) && tipo.UsuariosEspecificos.Any(u => u.Id == userId));
+
+    private static TipoDoacaoResponseDto ToResponse(TipoDoacao tipo, bool includeRecipientIds = true) => new(
+        tipo.Id,
+        tipo.Nome,
+        tipo.DataCriacao,
+        tipo.MesAbertura ?? new DateTime(tipo.DataCriacao.Year, tipo.DataCriacao.Month, 1),
+        tipo.Data_Expiracao,
+        tipo.Descricao,
+        tipo.ValorPadrao,
+        tipo.TodosUsuarios,
+        includeRecipientIds ? tipo.UsuariosEspecificos.Select(u => u.Id).ToList() : []);
 
     /// <summary>
     /// Remove um tipo de doação pelo ID.

@@ -20,7 +20,7 @@ Esta documentação detalha todos os endpoints HTTP disponíveis no sistema de g
 ---
 
 ### POST /api/Auth/login
-- Descrição: Autentica o usuário no sistema validando as credenciais de e-mail e senha enviadas.
+- Descrição: Autentica o usuário no sistema e tenta gerar os débitos mensais pendentes antes de concluir o login.
 - Acesso: Público (Não exige Token JWT).
 - Corpo da Requisição (LoginDto):
   {
@@ -44,7 +44,7 @@ Esta documentação detalha todos os endpoints HTTP disponíveis no sistema de g
 ---
 
 ### GET /api/Auth/me
-- Descrição: Obtém as informações do perfil do próprio usuário que está conectado, extraindo o ID diretamente do Token JWT enviado no cabeçalho Authorization.
+- Descrição: Obtém as informações do perfil conectado e reprocessa débitos mensais que possam ter ficado pendentes por falha do serviço agendado.
 - Acesso: Autenticado (Requer Token JWT de qualquer perfil).
 - Retorno (200 OK): Dados do perfil do usuário logado (id, nome, email, perfil).
 
@@ -159,7 +159,7 @@ Esta documentação detalha todos os endpoints HTTP disponíveis no sistema de g
 ### GET /api/TiposDoacao
 - Descrição: Lista todos os tipos e campanhas de doação cadastradas (ex: Dízimo, Oferta de Missões, Construção, etc.).
 - Acesso: Autenticado (Disponível para Membros e Tesoureiros).
-- Retorno (200 OK): Lista contendo id, nome, dataCriacao, dataExpiracao e descricao.
+- Retorno (200 OK): Lista contendo os campos da campanha, valor mensal padrão, público destinatário e IDs dos membros selecionados (IDs visíveis apenas para o tesoureiro).
 
 ---
 
@@ -169,8 +169,12 @@ Esta documentação detalha todos os endpoints HTTP disponíveis no sistema de g
 - Corpo da Requisição (CriarTipoDoacaoDto):
   {
     "nome": "Oferta de Missões",
-    "descricao": "Fundo destinado ao suporte missionário",
-    "dataExpiracao": "2026-12-31T23:59:59Z"
+    "descricao": "Contribuição mensal missionária",
+    "valorPadrao": 50.00,
+    "mesAbertura": "2026-10-01T00:00:00Z",
+    "dataExpiracao": "2026-12-01T00:00:00Z",
+    "todosUsuarios": false,
+    "usuariosIds": [4, 8, 11]
   }
 - Retorno (201 Created): Objeto cadastrado.
 
@@ -190,9 +194,13 @@ Esta documentação detalha todos os endpoints HTTP disponíveis no sistema de g
 - Parâmetros de Rota: id (int).
 - Corpo da Requisição (AtualizarTipoDoacaoDto):
   {
-    "nome": "Oferta de Missões 2026",
+    "nome": "Oferta de Missões",
     "descricao": "Fundo atualizado",
-    "dataExpiracao": "2026-12-31T23:59:59Z"
+    "valorPadrao": 55.00,
+    "mesAbertura": "2026-10-01T00:00:00Z",
+    "dataExpiracao": "2026-12-01T00:00:00Z",
+    "todosUsuarios": true,
+    "usuariosIds": []
   }
 - Retorno (204 No Content): Sucesso sem corpo de retorno.
 
@@ -253,7 +261,9 @@ Esta documentação detalha todos os endpoints HTTP disponíveis no sistema de g
 
 ## Atualizações de doações por mês
 
-Doações agora possuem `mesReferencia` (primeiro dia do mês no formato ISO). O servidor usa o mês atual quando o campo não for enviado. A combinação membro + tipo de doação + mês é única; uma segunda tentativa retorna `409 Conflict`. Tipos só podem receber lançamentos entre o mês de criação e o mês de expiração, inclusive.
+Doações agora possuem `mesReferencia` (primeiro dia do mês no formato ISO). O servidor usa o mês atual quando o campo não for enviado. A combinação membro + tipo de doação + mês é única; uma segunda tentativa retorna `409 Conflict`. Tipos só podem receber lançamentos entre `mesAbertura` e `dataExpiracao`, inclusive, e campanhas restritas só podem ser usadas pelos membros selecionados.
+
+Um serviço em segundo plano gera débitos `EmAberto` no primeiro dia de cada mês. O login e `GET /api/Auth/me` reprocessam competências devidas para recuperar falhas. A geração é idempotente e respeita público, período e valor padrão. Campanhas antigas com `valorPadrao` igual a zero precisam ser editadas pelo tesoureiro antes da geração automática.
 
 ### POST /api/DebitosMembros
 - Inclua `mesReferencia` junto a `usuarioId`, `tipoDoacaoId` e `valor`.
@@ -272,10 +282,10 @@ O envio de comprovante mantém o status `EmAberto` até revisão da tesouraria. 
 ---
 
 ### DELETE /api/Usuarios/{id}
-- Descrição: Exclui permanentemente uma conta de usuário do sistema.
+- Descrição: Exclui a conta apenas quando ainda não há histórico financeiro; contas com débitos são preservadas.
 - Acesso: Restrito ao Tesoureiro.
 - Parâmetros de Rota: id (int).
-- Retorno (204 No Content): Sucesso na exclusão.
+- Retorno (204 No Content): Sucesso na exclusão; `409 Conflict` quando existem débitos relacionados.
 
 ---
 

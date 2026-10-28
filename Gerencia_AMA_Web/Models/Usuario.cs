@@ -31,4 +31,6 @@ public class Usuario
     public DateTime? RefreshTokenExpiryTime { get; set; }
 
     public ICollection<DebitoMembro> Debitos { get; set; } = new List<DebitoMembro>();
+
+    public ICollection<TipoDoacao> TiposDoacaoAtribuidos { get; set; } = new List<TipoDoacao>();
 }

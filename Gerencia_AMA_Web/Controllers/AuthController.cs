@@ -16,11 +16,13 @@ public class AuthController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly TokenService _tokenService;
+    private readonly MonthlyDebitGenerator _monthlyDebitGenerator;
 
-    public AuthController(AppDbContext context, TokenService tokenService)
+    public AuthController(AppDbContext context, TokenService tokenService, MonthlyDebitGenerator monthlyDebitGenerator)
     {
         _context = context;
         _tokenService = tokenService;
+        _monthlyDebitGenerator = monthlyDebitGenerator;
     }
 
     /// <summary>
@@ -59,6 +61,8 @@ public class AuthController : ControllerBase
 
         if (usuario == null || !BCrypt.Net.BCrypt.Verify(dto.Senha, usuario.Senha))
             return Unauthorized(new { erro = "E-mail ou senha inválidos." });
+
+        await _monthlyDebitGenerator.TryEnsureDueDebitsAsync();
 
         var accessToken = _tokenService.GerarAccessToken(usuario);
         var refreshToken = _tokenService.GerarRefreshToken();
@@ -113,6 +117,7 @@ public class AuthController : ControllerBase
     [Authorize]
     public async Task<IActionResult> ObterMeuPerfil()
     {
+        await _monthlyDebitGenerator.TryEnsureDueDebitsAsync();
         var usuarioIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (!int.TryParse(usuarioIdClaim, out int usuarioId))
             return Unauthorized();

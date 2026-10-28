@@ -11,6 +11,7 @@ public sealed class DonationFormPage : ContentPage
     private static readonly Color Muted = Color.FromArgb("#82919C");
     private readonly IReadOnlyList<TipoDoacao> _types;
     private readonly IReadOnlyList<Debito> _debits;
+    private readonly int? _memberId;
     private readonly Picker _monthPicker;
     private readonly Picker _typePicker;
     private readonly Entry _amount;
@@ -18,10 +19,11 @@ public sealed class DonationFormPage : ContentPage
     private readonly TaskCompletionSource<DonationSubmission?> _completion = new();
     private IReadOnlyList<DateTime> _months = [];
 
-    public DonationFormPage(IReadOnlyList<TipoDoacao> types, IReadOnlyList<Debito> debits, DateTime? initialMonth = null)
+    public DonationFormPage(IReadOnlyList<TipoDoacao> types, IReadOnlyList<Debito> debits, DateTime? initialMonth = null, int? memberId = null)
     {
         _types = types;
         _debits = debits;
+        _memberId = memberId;
         Title = "Nova doação";
         BackgroundColor = Color.FromArgb("#F5F8FA");
 
@@ -71,7 +73,7 @@ public sealed class DonationFormPage : ContentPage
     {
         if (_monthPicker.SelectedIndex < 0 || _monthPicker.SelectedIndex >= _months.Count) return;
         var month = _months[_monthPicker.SelectedIndex];
-        var openTypes = _types.Where(t => IsOpen(t, month)).ToList();
+        var openTypes = AvailableTypes(month);
         _typePicker.ItemsSource = openTypes.Select(t => t.Nome).ToList();
         _typePicker.SelectedIndex = -1;
         RefreshAvailability();
@@ -82,11 +84,12 @@ public sealed class DonationFormPage : ContentPage
     {
         if (_monthPicker.SelectedIndex < 0 || _typePicker.SelectedIndex < 0) return;
         var month = _months[_monthPicker.SelectedIndex];
-        var type = _types.Where(t => IsOpen(t, month)).ElementAtOrDefault(_typePicker.SelectedIndex);
+        var type = AvailableTypes(month).ElementAtOrDefault(_typePicker.SelectedIndex);
         if (type == null) return;
         var exists = _debits.Any(d => d.TipoDoacaoId == type.Id && d.ReferenceMonth.Year == month.Year && d.ReferenceMonth.Month == month.Month);
         _availability.Text = exists ? "Você já tem uma doação deste tipo neste mês." : "Disponível para registrar neste mês.";
         _availability.TextColor = exists ? Color.FromArgb("#C95050") : Color.FromArgb("#208B69");
+        if (!exists && string.IsNullOrWhiteSpace(_amount.Text)) _amount.Text = type.ValorPadrao.ToString("0.00", new System.Globalization.CultureInfo("pt-BR"));
     }
 
     private async Task Submit()
@@ -97,7 +100,7 @@ public sealed class DonationFormPage : ContentPage
             return;
         }
         var month = _months[_monthPicker.SelectedIndex];
-        var type = _types.Where(t => IsOpen(t, month)).ElementAtOrDefault(_typePicker.SelectedIndex);
+        var type = AvailableTypes(month).ElementAtOrDefault(_typePicker.SelectedIndex);
         if (type == null) return;
         if (_debits.Any(d => d.TipoDoacaoId == type.Id && d.ReferenceMonth.Year == month.Year && d.ReferenceMonth.Month == month.Month))
         {
@@ -126,6 +129,10 @@ public sealed class DonationFormPage : ContentPage
         var reference = new DateTime(month.Year, month.Month, 1);
         return start <= reference && reference <= end;
     }
+
+    private List<TipoDoacao> AvailableTypes(DateTime month) => _types
+        .Where(type => IsOpen(type, month) && (_memberId == null || type.TodosUsuarios || type.UsuariosIds.Contains(_memberId.Value)))
+        .ToList();
 
     private static string FormatMonth(DateTime month) => month.ToString("MMMM 'de' yyyy", new System.Globalization.CultureInfo("pt-BR"));
 

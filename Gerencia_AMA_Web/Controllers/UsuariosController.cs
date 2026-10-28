@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ApiTesourariaAMA.Enums;
 using ApiTesourariaAMA.Dtos;
+using System.Security.Claims;
 
 namespace ApiTesourariaAMA.Controllers;
 
@@ -43,22 +44,16 @@ public class UsuariosController : ControllerBase
     [HttpGet("TipoDoacoes/{UsuarioId}")]
     public async Task<IActionResult> GetTipoDoacaoByUsuarioId(int UsuarioId)
     {
-        var usuario = await _context.Usuarios
-            .Include(u => u.Debitos)
-            .ThenInclude(d => d.TipoDoacao)
-            .FirstOrDefaultAsync(u => u.Id == UsuarioId);
+        if (!await _context.Usuarios.AnyAsync(u => u.Id == UsuarioId)) return NotFound("Usuário não encontrado.");
 
-        if (usuario == null) return NotFound("Usuário não encontrado.");
-
-        var tiposDoacao = usuario.Debitos
-            .Select(d => new TipoDoacaoResponseDto(
-                d.TipoDoacao.Id,
-                d.TipoDoacao.Nome,
-                d.TipoDoacao.DataCriacao,
-                d.TipoDoacao.MesAbertura ?? new DateTime(d.TipoDoacao.DataCriacao.Year, d.TipoDoacao.DataCriacao.Month, 1),
-                d.TipoDoacao.Data_Expiracao,
-                d.TipoDoacao.Descricao
-            ))
+        var tipos = await _context.TiposDoacao.Include(t => t.UsuariosEspecificos).AsNoTracking().ToListAsync();
+        var tiposDoacao = tipos
+            .Where(t => t.TodosUsuarios || t.UsuariosEspecificos.Any(u => u.Id == UsuarioId))
+            .Select(t => new TipoDoacaoResponseDto(
+                t.Id, t.Nome, t.DataCriacao,
+                t.MesAbertura ?? new DateTime(t.DataCriacao.Year, t.DataCriacao.Month, 1),
+                t.Data_Expiracao, t.Descricao, t.ValorPadrao, t.TodosUsuarios,
+                t.UsuariosEspecificos.Select(u => u.Id).ToList()))
             .ToList();
 
         return Ok(tiposDoacao);
@@ -110,6 +105,12 @@ public class UsuariosController : ControllerBase
     {
         var usuario = await _context.Usuarios.FindAsync(id);
         if (usuario == null) return NotFound("Usuário não encontrado.");
+
+        if (int.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var currentUserId) && currentUserId == id)
+            return BadRequest("Não é possível excluir a própria conta por esta tela.");
+
+        if (await _context.DebitosMembros.AnyAsync(d => d.UsuarioId == id))
+            return Conflict(new { erro = "Este usuário possui histórico financeiro. Altere o perfil ou mantenha o cadastro para preservar os registros." });
 
         _context.Usuarios.Remove(usuario);
         await _context.SaveChangesAsync();

@@ -41,4 +41,14 @@ public class TipoDoacao
 
     [StringLength(255, ErrorMessage = "A descrição não pode exceder 255 caracteres.")]
     public string? Descricao { get; set; }
+
+    /// <summary>Valor mensal sugerido usado na geração automática dos débitos.</summary>
+    [Column(TypeName = "decimal(18,2)")]
+    [Range(0, 999999.99)]
+    public decimal ValorPadrao { get; set; }
+
+    /// <summary>Quando falso, somente os membros da coleção recebem esta campanha.</summary>
+    public bool TodosUsuarios { get; set; } = true;
+
+    public ICollection<Usuario> UsuariosEspecificos { get; set; } = new List<Usuario>();
 }

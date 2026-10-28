@@ -81,6 +81,14 @@ namespace Gerencia_AMA_Web.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("TodosUsuarios")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(true);
+
+                    b.Property<decimal>("ValorPadrao")
+                        .HasColumnType("decimal(18,2)");
+
                     b.HasKey("Id");
 
                     b.ToTable("TiposDoacao");
@@ -143,6 +151,21 @@ namespace Gerencia_AMA_Web.Migrations
                     b.ToTable("Comprovantes");
                 });
 
+            modelBuilder.Entity("TipoDoacaoUsuario", b =>
+                {
+                    b.Property<int>("TipoDoacaoId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("UsuarioId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("TipoDoacaoId", "UsuarioId");
+
+                    b.HasIndex("UsuarioId");
+
+                    b.ToTable("TipoDoacaoUsuarios", (string)null);
+                });
+
             modelBuilder.Entity("ApiTesourariaAMA.Models.DebitoMembro", b =>
                 {
                     b.HasOne("Comprovante", "Comprovante")
@@ -166,6 +189,21 @@ namespace Gerencia_AMA_Web.Migrations
                     b.Navigation("TipoDoacao");
 
                     b.Navigation("Usuario");
+                });
+
+            modelBuilder.Entity("TipoDoacaoUsuario", b =>
+                {
+                    b.HasOne("ApiTesourariaAMA.Models.TipoDoacao", null)
+                        .WithMany()
+                        .HasForeignKey("TipoDoacaoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ApiTesourariaAMA.Models.Usuario", null)
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ApiTesourariaAMA.Models.Usuario", b =>

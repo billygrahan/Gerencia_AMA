@@ -28,6 +28,23 @@ public class AppDbContext : DbContext
             .IsUnique()
             .HasFilter("MesReferencia IS NOT NULL");
 
+        modelBuilder.Entity<TipoDoacao>()
+            .Property(t => t.TodosUsuarios)
+            .HasDefaultValue(true);
+
+        modelBuilder.Entity<TipoDoacao>()
+            .HasMany(t => t.UsuariosEspecificos)
+            .WithMany(u => u.TiposDoacaoAtribuidos)
+            .UsingEntity<Dictionary<string, object>>(
+                "TipoDoacaoUsuario",
+                right => right.HasOne<Usuario>().WithMany().HasForeignKey("UsuarioId").OnDelete(DeleteBehavior.Cascade),
+                left => left.HasOne<TipoDoacao>().WithMany().HasForeignKey("TipoDoacaoId").OnDelete(DeleteBehavior.Cascade),
+                join =>
+                {
+                    join.ToTable("TipoDoacaoUsuarios");
+                    join.HasKey("TipoDoacaoId", "UsuarioId");
+                });
+
         // // Hash válida e testada para a senha: Admin@123
         // const string hashSenhaAdmin = "$2a$11$N7I1fPjZ.x/k4A2/6i4gO.8xW/V7lB7w3KjX7xZ/8m2K2d0f0G1e2";
 

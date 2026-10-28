@@ -137,9 +137,12 @@ public class DebitosMembrosController : ControllerBase
         if (!usuarioExiste)
             return BadRequest(new { erro = $"Usuário com ID {dto.UsuarioId} não existe." });
 
-        var tipo = await _context.TiposDoacao.FirstOrDefaultAsync(t => t.Id == dto.TipoDoacaoId);
+        var tipo = await _context.TiposDoacao.Include(t => t.UsuariosEspecificos).FirstOrDefaultAsync(t => t.Id == dto.TipoDoacaoId);
         if (tipo == null)
             return BadRequest(new { erro = $"Tipo de doação com ID {dto.TipoDoacaoId} não existe." });
+
+        if (!TipoDisponivelParaUsuario(tipo, dto.UsuarioId))
+            return BadRequest(new { erro = "Este tipo de doação não está atribuído a este membro." });
 
         var mes = NormalizarMes(dto.MesReferencia);
         if (!TipoAbertoNoMes(tipo, mes))
@@ -169,7 +172,7 @@ public class DebitosMembrosController : ControllerBase
         }
 
         var usuario = await _context.Usuarios.FindAsync(dto.UsuarioId);
-        var tipoDoacao = await _context.TiposDoacao.FindAsync(dto.TipoDoacaoId);
+        var tipoDoacao = await _context.TiposDoacao.Include(t => t.UsuariosEspecificos).FirstOrDefaultAsync(t => t.Id == dto.TipoDoacaoId);
 
         var response = new DebitoMembroResponseDto(
             debito.Id,
@@ -203,9 +206,12 @@ public class DebitosMembrosController : ControllerBase
         if (usuario == null)
             return NotFound(new { erro = "Usuário não encontrado." });
 
-        var tipoDoacao = await _context.TiposDoacao.FindAsync(dto.TipoDoacaoId);
+        var tipoDoacao = await _context.TiposDoacao.Include(t => t.UsuariosEspecificos).FirstOrDefaultAsync(t => t.Id == dto.TipoDoacaoId);
         if (tipoDoacao == null)
             return BadRequest(new { erro = $"Tipo de doação com ID {dto.TipoDoacaoId} não existe." });
+
+        if (!TipoDisponivelParaUsuario(tipoDoacao, usuarioId))
+            return BadRequest(new { erro = "Este tipo de doação não está atribuído a você." });
 
         var mes = NormalizarMes(dto.MesReferencia);
         if (!TipoAbertoNoMes(tipoDoacao, mes))
@@ -260,6 +266,9 @@ public class DebitosMembrosController : ControllerBase
     private static bool TipoAbertoNoMes(TipoDoacao tipo, DateTime mes) =>
         (tipo.MesAbertura ?? new DateTime(tipo.DataCriacao.Year, tipo.DataCriacao.Month, 1)) <= mes &&
         mes <= new DateTime(tipo.Data_Expiracao.Year, tipo.Data_Expiracao.Month, 1);
+
+    private static bool TipoDisponivelParaUsuario(TipoDoacao tipo, int usuarioId) =>
+        tipo.TodosUsuarios || tipo.UsuariosEspecificos.Any(u => u.Id == usuarioId);
 
     private async Task<bool> JaExisteNoMes(int usuarioId, int tipoId, DateTime mes) =>
         await _context.DebitosMembros.AnyAsync(d => d.UsuarioId == usuarioId && d.TipoDoacaoId == tipoId &&
